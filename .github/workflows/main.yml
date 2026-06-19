@@ -1,0 +1,66 @@
+name: CI/CD Pipeline
+
+# 触发条件
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*.*.*" ] # 当推送类似 v1.0.0 的标签时触发
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # 任务 1：代码质量检查 (Lint)
+  php-lint:
+    name: PHP Syntax Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2' # 使用较新的 PHP 8 版本进行严格检查
+          coverage: none # 提速，不需要代码覆盖率
+
+      - name: Run PHP Lint
+        # 遍历项目中所有的 .php 文件并进行语法检查 (-l)
+        run: |
+          echo "Starting PHP syntax check..."
+          find . -type f -name '*.php' -exec php -l {} \; | grep -v "No syntax errors detected" || true
+          
+          # 如果 find 命令检测到任何错误，让整个工作流报错拦截
+          if find . -type f -name '*.php' -exec php -l {} \; | grep -q "Parse error"; then
+            echo "❌ PHP Syntax errors found!"
+            exit 1
+          else
+            echo "✅ All PHP files passed strict syntax check."
+          fi
+
+  # 任务 2：自动打包与发布 Release (仅在打 Tag 时运行)
+  release:
+    name: Build and Release
+    needs: php-lint # 必须先通过语法检查才能打包
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许创建 Release 的权限
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Release Archive
+        # 打包成 zip，但要排除掉开发相关的文件和目录，保持生产包干净
+        run: |
+          ZIP_NAME="xuliehao-${{ github.ref_name }}.zip"
+          echo "Packaging $ZIP_NAME ..."
+          zip -r $ZIP_NAME . -x "*.git*" "*.github*" "*README.md"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true # 自动根据 commit 生成更新日志
