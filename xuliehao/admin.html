@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员面板</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/css/main.css">
+    <link rel="stylesheet" href="./assets/css/admin.css">
+</head>
+<body class="admin-body">
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <p class="eyebrow">Control Deck</p>
+            <h1>序列号管理后台</h1>
+            <p id="adminIdentity" class="sidebar-copy">正在验证登录状态...</p>
+            <nav class="sidebar-nav">
+                <a href="#overview" data-section="overview">概览</a>
+                <a href="#serials" data-section="serials">序列号</a>
+                <a href="#settings" data-section="settings">站点设置</a>
+                <a href="#admins" id="adminsNavLink" class="hidden" data-section="admins">管理员</a>
+                <a href="#logs" id="logsNavLink" class="hidden" data-section="logs">操作日志</a>
+                <a href="#profile" data-section="profile">个人资料</a>
+            </nav>
+            <div class="sidebar-actions">
+                <a class="ghost-button" href="./index.html">打开查询页</a>
+                <button id="logoutButton" class="danger-button" type="button">退出登录</button>
+            </div>
+        </aside>
+
+        <main class="admin-main">
+            <section id="overview" class="panel-section">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Dashboard</span>
+                        <h2>控制台概览</h2>
+                    </div>
+                    <p id="globalMessage" class="inline-message">正在加载后台数据...</p>
+                </div>
+                <div class="stats-grid">
+                    <article class="stat-card">
+                        <span>当前身份</span>
+                        <strong id="statRole">-</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>序列号总数</span>
+                        <strong id="statSerialCount">0</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>管理员总数</span>
+                        <strong id="statAdminCount">0</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span>最近配置更新</span>
+                        <strong id="statSettingsUpdated">-</strong>
+                    </article>
+                </div>
+            </section>
+
+            <section id="serials" class="panel-section">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Serials</span>
+                        <h2>序列号管理</h2>
+                    </div>
+                </div>
+
+                <form id="serialSearchForm" class="toolbar-grid">
+                    <input type="text" name="keyword" placeholder="搜索序列号或备注">
+                    <select name="status">
+                        <option value="">全部状态</option>
+                        <option value="valid">valid</option>
+                        <option value="used">used</option>
+                        <option value="disabled">disabled</option>
+                    </select>
+                    <input type="text" name="batch" placeholder="筛选批次">
+                    <button type="submit" class="primary-button">搜索</button>
+                    <button id="serialResetButton" type="button" class="ghost-button">重置</button>
+                </form>
+
+                <div class="management-grid">
+                    <div class="table-card">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>序列号</th>
+                                    <th>状态</th>
+                                    <th>批次</th>
+                                    <th>备注</th>
+                                    <th>更新时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="serialTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="form-card">
+                        <h3 id="serialFormTitle">新增序列号</h3>
+                        <form id="serialForm" class="panel-form">
+                            <input type="hidden" name="id">
+                            <label>
+                                <span>序列号</span>
+                                <input type="text" name="serial" required>
+                            </label>
+                            <label>
+                                <span>状态</span>
+                                <select name="status">
+                                    <option value="valid">valid</option>
+                                    <option value="used">used</option>
+                                    <option value="disabled">disabled</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>批次</span>
+                                <input type="text" name="batch">
+                            </label>
+                            <label>
+                                <span>备注</span>
+                                <textarea name="remark" rows="3"></textarea>
+                            </label>
+                            <label>
+                                <span>额外说明</span>
+                                <textarea name="extraInfo" rows="3"></textarea>
+                            </label>
+                            <div class="form-actions">
+                                <button type="submit" class="primary-button">保存序列号</button>
+                                <button id="serialCancelButton" type="button" class="ghost-button">取消编辑</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <section id="settings" class="panel-section">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Settings</span>
+                        <h2>公告与背景图</h2>
+                    </div>
+                </div>
+
+                <div class="management-grid settings-grid">
+                    <div class="form-card">
+                        <h3>公告设置</h3>
+                        <form id="settingsForm" class="panel-form">
+                            <label>
+                                <span>站点公告</span>
+                                <textarea id="announcementInput" name="announcement" rows="6"></textarea>
+                            </label>
+                            <button type="submit" class="primary-button">保存公告</button>
+                        </form>
+                    </div>
+
+                    <div class="form-card">
+                        <h3>背景图管理</h3>
+                        <div id="backgroundPreview" class="background-preview">当前未设置自定义背景图</div>
+                        <p id="backgroundPath" class="muted-text">当前路径：未设置</p>
+                        <form id="backgroundUploadForm" class="panel-form" enctype="multipart/form-data">
+                            <label>
+                                <span>上传新背景图</span>
+                                <input type="file" name="background" accept="image/png,image/jpeg,image/webp,image/gif" required>
+                            </label>
+                            <button type="submit" class="primary-button">上传并应用</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admins" class="panel-section hidden">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Admins</span>
+                        <h2>管理员账号与权限</h2>
+                    </div>
+                </div>
+
+                <div class="management-grid">
+                    <div class="table-card">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>账号</th>
+                                    <th>角色</th>
+                                    <th>状态</th>
+                                    <th>权限</th>
+                                    <th>更新时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="form-card">
+                        <h3 id="adminFormTitle">创建管理员</h3>
+                        <form id="adminForm" class="panel-form">
+                            <input type="hidden" name="id">
+                            <label>
+                                <span>管理员账号</span>
+                                <input type="text" name="username" required>
+                            </label>
+                            <label>
+                                <span>管理员密码</span>
+                                <input type="password" name="password" placeholder="编辑时留空表示不修改">
+                            </label>
+                            <label>
+                                <span>角色</span>
+                                <select name="role">
+                                    <option value="viewer_admin">viewer_admin</option>
+                                    <option value="content_admin">content_admin</option>
+                                    <option value="super_admin">super_admin</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>状态</span>
+                                <select name="status">
+                                    <option value="active">active</option>
+                                    <option value="disabled">disabled</option>
+                                </select>
+                            </label>
+                            <fieldset class="permission-box">
+                                <legend>权限</legend>
+                                <label><input type="checkbox" name="permissions" value="serial.view"> serial.view</label>
+                                <label><input type="checkbox" name="permissions" value="serial.create"> serial.create</label>
+                                <label><input type="checkbox" name="permissions" value="serial.update"> serial.update</label>
+                                <label><input type="checkbox" name="permissions" value="serial.delete"> serial.delete</label>
+                                <label><input type="checkbox" name="permissions" value="settings.update"> settings.update</label>
+                                <label><input type="checkbox" name="permissions" value="admins.manage"> admins.manage</label>
+                            </fieldset>
+                            <div class="form-actions">
+                                <button type="submit" class="primary-button">保存管理员</button>
+                                <button id="adminCancelButton" type="button" class="ghost-button">取消编辑</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <section id="logs" class="panel-section hidden">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Audit</span>
+                        <h2>操作日志</h2>
+                    </div>
+                </div>
+
+                <div class="table-card">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>操作人</th>
+                                <th>动作</th>
+                                <th>目标</th>
+                                <th>IP</th>
+                                <th>摘要</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="profile" class="panel-section">
+                <div class="section-header">
+                    <div>
+                        <span class="section-tag">Profile</span>
+                        <h2>个人资料</h2>
+                    </div>
+                </div>
+
+                <div class="form-card profile-card">
+                    <form id="profileForm" class="panel-form">
+                        <input type="hidden" name="id">
+                        <label>
+                            <span>当前账号</span>
+                            <input type="text" name="username" required>
+                        </label>
+                        <label>
+                            <span>新密码</span>
+                            <input type="password" name="password" placeholder="留空表示不修改密码">
+                        </label>
+                        <button type="submit" class="primary-button">更新个人资料</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="./assets/js/admin.js" defer></script>
+</body>
+</html>

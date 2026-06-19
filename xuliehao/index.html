@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>序列号查询中心</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/css/main.css">
+</head>
+<body class="query-body">
+    <div class="query-shell" id="queryShell">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Serial Intelligence Portal</p>
+                <h1>序列号查询中心</h1>
+            </div>
+            <a class="ghost-button" href="./admin-login.html">管理员入口</a>
+        </header>
+
+        <main class="query-grid">
+            <section class="hero-card glass-card">
+                <span class="section-tag">公开查询</span>
+                <h2>验证序列号状态与批次信息</h2>
+                <p class="hero-copy">输入完整序列号即可获得状态、批次、备注和最近更新时间，适合售后核验、产品登记与内部追踪。</p>
+
+                <form id="queryForm" class="query-form">
+                    <label for="serialInput" class="sr-only">输入序列号</label>
+                    <input id="serialInput" name="serial" type="text" placeholder="例如：SN-2026-000001" autocomplete="off" required>
+                    <button type="submit" class="primary-button">立即查询</button>
+                </form>
+
+                <div id="queryMessage" class="inline-message">系统已就绪，等待查询。</div>
+
+                <div class="hero-meta">
+                    <div class="meta-card">
+                        <span>查询方式</span>
+                        <strong>实时 JSON 检索</strong>
+                    </div>
+                    <div class="meta-card">
+                        <span>站点公告</span>
+                        <strong id="settingsUpdatedAt">正在加载...</strong>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="side-stack">
+                <section class="glass-card notice-card">
+                    <span class="section-tag">站点公告</span>
+                    <h3>最新公告</h3>
+                    <p id="announcementText">正在加载公告内容...</p>
+                </section>
+
+                <section id="resultCard" class="glass-card result-card result-empty">
+                    <span class="section-tag">查询结果</span>
+                    <h3 id="resultTitle">等待查询</h3>
+                    <p id="resultDescription">提交序列号后，这里会显示匹配结果。</p>
+                    <dl id="resultDetails" class="detail-list"></dl>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script src="./assets/js/query.js" defer></script>
+</body>
+</html>

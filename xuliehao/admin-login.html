@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员登录</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/css/main.css">
+</head>
+<body class="login-body">
+    <main class="login-shell">
+        <section class="login-side">
+            <p class="eyebrow">Administrator Access</p>
+            <h1>后台控制台登录</h1>
+            <p>登录后可管理序列号、公告、查询背景图，以及多管理员分级账号。</p>
+            <div class="feature-points">
+                <div class="feature-pill">序列号搜索 / 新增 / 修改 / 删除</div>
+                <div class="feature-pill">管理员账号与权限分级</div>
+                <div class="feature-pill">背景图上传与公告发布</div>
+            </div>
+            <a class="ghost-button" href="./index.html">返回查询页</a>
+        </section>
+
+        <section class="glass-card login-card">
+            <span class="section-tag">安全登录</span>
+            <h2>管理员验证</h2>
+            <form id="loginForm" class="panel-form">
+                <label>
+                    <span>管理员账号</span>
+                    <input type="text" name="username" placeholder="请输入管理员账号" required>
+                </label>
+                <label>
+                    <span>管理员密码</span>
+                    <input type="password" name="password" placeholder="请输入管理员密码" required>
+                </label>
+                <button type="submit" class="primary-button">登录后台</button>
+            </form>
+            <p id="loginMessage" class="inline-message">请输入账号密码登录。</p>
+            <p class="muted-text">首次部署时会自动初始化默认超级管理员，具体凭据请以部署说明为准。</p>
+        </section>
+    </main>
+
+    <script src="./assets/js/admin-login.js" defer></script>
+</body>
+</html>
