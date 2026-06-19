@@ -10,14 +10,17 @@ header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-in
 
 const MAX_JSON_BODY_BYTES = 2097152;
 const DEFAULT_JSON_DEPTH = 64;
-const MAX_AUDIT_LOGS = 500;
+const MAX_AUDIT_LOG_LIST_RESULTS = 500;
 const SESSION_IDLE_TIMEOUT_SECONDS = 1800;
 const MAX_ANNOUNCEMENT_LENGTH = 1000;
+const MAX_BACKGROUND_IMAGE_LENGTH = 255;
 const MAX_SERIAL_REMARK_LENGTH = 500;
 const MAX_SERIAL_EXTRA_INFO_LENGTH = 500;
 const MAX_SERIAL_BATCH_LENGTH = 100;
 const RATE_LIMIT_GC_PROBABILITY = 2;
 const RATE_LIMIT_GC_STALE_SECONDS = 3600;
+const RATE_LIMIT_REDIS_PREFIX = 'serial_query:rate_limit:';
+const AUDIT_LOG_MONTH_SCAN_LIMIT = 12;
 
 function is_https_request(): bool
 {
@@ -58,6 +61,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 const ROOT_PATH = __DIR__ . '/..';
 const DATA_PATH = ROOT_PATH . '/data';
+const LOG_PATH = DATA_PATH . '/logs';
 const RATE_LIMIT_PATH = DATA_PATH . '/rate_limits';
 const UPLOAD_PATH = ROOT_PATH . '/assets/uploads/backgrounds';
 
@@ -386,9 +390,14 @@ function sanitize_admin(array $admin): array
 
 function public_settings(array $settings): array
 {
+    $backgroundImage = trim((string) ($settings['backgroundImage'] ?? ''));
+    if (string_length($backgroundImage) > MAX_BACKGROUND_IMAGE_LENGTH) {
+        $backgroundImage = '';
+    }
+
     return [
         'announcement' => (string) ($settings['announcement'] ?? ''),
-        'backgroundImage' => (string) ($settings['backgroundImage'] ?? ''),
+        'backgroundImage' => $backgroundImage,
         'updatedAt' => (string) ($settings['updatedAt'] ?? ''),
     ];
 }
@@ -481,24 +490,182 @@ function update_settings_store(callable $mutator): array
     ], $mutator);
 }
 
-function load_log_store(): array
+function legacy_log_storage_file(): string
 {
-    return read_json_file(storage_file('logs'), ['logs' => []]);
+    return storage_file('logs');
 }
 
-function update_log_store(callable $mutator): array
+function audit_log_file_for_month(?string $monthKey = null): string
 {
-    return mutate_json_file(storage_file('logs'), ['logs' => []], $mutator);
+    $resolvedMonthKey = $monthKey ?? date('Y_m');
+    return LOG_PATH . '/logs_' . $resolvedMonthKey . '.json';
+}
+
+function append_audit_log_entry(array $entry): void
+{
+    $file = audit_log_file_for_month(date('Y_m', strtotime((string) ($entry['createdAt'] ?? now_iso()))));
+
+    mutate_json_file($file, ['logs' => []], function (array $store) use ($entry): array {
+        $logs = is_array($store['logs'] ?? null) ? $store['logs'] : [];
+        $logs[] = $entry;
+        $store['logs'] = $logs;
+        return $store;
+    });
+}
+
+function list_audit_log_files(): array
+{
+    $files = [];
+
+    if (is_dir(LOG_PATH)) {
+        $iterator = new DirectoryIterator(LOG_PATH);
+        foreach ($iterator as $fileInfo) {
+            if (!$fileInfo->isFile()) {
+                continue;
+            }
+
+            $name = $fileInfo->getFilename();
+            if (preg_match('/^logs_\d{4}_\d{2}\.json$/', $name) === 1) {
+                $files[] = $fileInfo->getPathname();
+            }
+        }
+    }
+
+    if (is_file(legacy_log_storage_file())) {
+        $files[] = legacy_log_storage_file();
+    }
+
+    usort($files, static function (string $a, string $b): int {
+        return strcmp(basename($b), basename($a));
+    });
+
+    return $files;
+}
+
+function load_recent_audit_logs(int $limit = MAX_AUDIT_LOG_LIST_RESULTS): array
+{
+    $records = [];
+    $scannedMonths = 0;
+
+    foreach (list_audit_log_files() as $file) {
+        if (preg_match('/^logs_\d{4}_\d{2}\.json$/', basename($file)) === 1) {
+            $scannedMonths++;
+            if ($scannedMonths > AUDIT_LOG_MONTH_SCAN_LIMIT) {
+                break;
+            }
+        }
+
+        $store = read_json_file($file, ['logs' => []]);
+        $logs = is_array($store['logs'] ?? null) ? $store['logs'] : [];
+
+        for ($index = count($logs) - 1; $index >= 0; $index--) {
+            $records[] = sanitize_audit_log((array) $logs[$index]);
+            if (count($records) >= $limit) {
+                return $records;
+            }
+        }
+    }
+
+    return $records;
+}
+
+function load_log_store(): array
+{
+    return ['logs' => load_recent_audit_logs()];
 }
 
 function get_client_ip(): string
 {
     $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
-    if ($remote !== '' && filter_var($remote, FILTER_VALIDATE_IP)) {
+    if ($remote === '' || !filter_var($remote, FILTER_VALIDATE_IP)) {
+        return 'unknown';
+    }
+
+    $trustedProxies = trusted_proxy_ip_rules();
+    if ($trustedProxies === [] || !ip_matches_trusted_rules($remote, $trustedProxies)) {
         return $remote;
     }
 
-    return 'unknown';
+    $forwardedFor = trim((string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+    if ($forwardedFor !== '') {
+        foreach (explode(',', $forwardedFor) as $candidate) {
+            $candidateIp = trim($candidate);
+            if ($candidateIp !== '' && filter_var($candidateIp, FILTER_VALIDATE_IP)) {
+                return $candidateIp;
+            }
+        }
+    }
+
+    $realIp = trim((string) ($_SERVER['HTTP_X_REAL_IP'] ?? ''));
+    if ($realIp !== '' && filter_var($realIp, FILTER_VALIDATE_IP)) {
+        return $realIp;
+    }
+
+    return $remote;
+}
+
+function trusted_proxy_ip_rules(): array
+{
+    static $rules;
+
+    if (is_array($rules)) {
+        return $rules;
+    }
+
+    $raw = trim((string) (getenv('SERIAL_QUERY_TRUSTED_PROXIES') ?: getenv('TRUSTED_PROXY_IPS') ?: ''));
+    if ($raw === '') {
+        $rules = [];
+        return $rules;
+    }
+
+    $rules = array_values(array_filter(array_map('trim', explode(',', $raw))));
+    return $rules;
+}
+
+function ip_matches_trusted_rules(string $ip, array $rules): bool
+{
+    foreach ($rules as $rule) {
+        if ($rule === '') {
+            continue;
+        }
+
+        if (strpos($rule, '/') === false) {
+            if (strcasecmp($ip, $rule) === 0) {
+                return true;
+            }
+            continue;
+        }
+
+        [$subnet, $prefixLength] = explode('/', $rule, 2);
+        if (ip_matches_cidr($ip, trim($subnet), (int) $prefixLength)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function ip_matches_cidr(string $ip, string $subnet, int $prefixLength): bool
+{
+    $ipBinary = @inet_pton($ip);
+    $subnetBinary = @inet_pton($subnet);
+    if ($ipBinary === false || $subnetBinary === false || strlen($ipBinary) !== strlen($subnetBinary)) {
+        return false;
+    }
+
+    $byteCount = intdiv($prefixLength, 8);
+    $bitRemainder = $prefixLength % 8;
+
+    if ($byteCount > 0 && substr($ipBinary, 0, $byteCount) !== substr($subnetBinary, 0, $byteCount)) {
+        return false;
+    }
+
+    if ($bitRemainder === 0) {
+        return true;
+    }
+
+    $mask = chr((0xFF << (8 - $bitRemainder)) & 0xFF);
+    return ($ipBinary[$byteCount] & $mask) === ($subnetBinary[$byteCount] & $mask);
 }
 
 function rate_limit_storage_file(string $scope, string $ip): string
@@ -557,38 +724,105 @@ function current_user_agent(): string
 
 function write_audit_log(array $admin, string $action, string $targetType, string $targetId, string $targetLabel, string $summary, array $details = []): void
 {
-    update_log_store(function (array $store) use ($admin, $action, $targetType, $targetId, $targetLabel, $summary, $details): array {
-        $logs = is_array($store['logs'] ?? null) ? $store['logs'] : [];
-        $logs[] = [
-            'id' => generate_id('log'),
-            'createdAt' => now_iso(),
-            'action' => $action,
-            'targetType' => $targetType,
-            'targetId' => $targetId,
-            'targetLabel' => $targetLabel,
-            'summary' => $summary,
-            'operator' => [
-                'id' => (string) ($admin['id'] ?? ''),
-                'username' => (string) ($admin['username'] ?? ''),
-                'role' => (string) ($admin['role'] ?? ''),
-            ],
-            'ip' => get_client_ip(),
-            'userAgent' => current_user_agent(),
-            'details' => $details,
-        ];
-
-        if (count($logs) > MAX_AUDIT_LOGS) {
-            $logs = array_slice($logs, -MAX_AUDIT_LOGS);
-        }
-
-        $store['logs'] = $logs;
-        return $store;
-    });
+    append_audit_log_entry([
+        'id' => generate_id('log'),
+        'createdAt' => now_iso(),
+        'action' => $action,
+        'targetType' => $targetType,
+        'targetId' => $targetId,
+        'targetLabel' => $targetLabel,
+        'summary' => $summary,
+        'operator' => [
+            'id' => (string) ($admin['id'] ?? ''),
+            'username' => (string) ($admin['username'] ?? ''),
+            'role' => (string) ($admin['role'] ?? ''),
+        ],
+        'ip' => get_client_ip(),
+        'userAgent' => current_user_agent(),
+        'details' => $details,
+    ]);
 }
 
-function consume_rate_limit(string $scope, int $maxAttempts, int $windowSeconds, string $message): void
+function redis_rate_limit_client()
 {
-    $ip = get_client_ip();
+    static $resolved = false;
+    static $client = null;
+
+    if ($resolved) {
+        return $client;
+    }
+
+    $resolved = true;
+
+    if (!class_exists('Redis')) {
+        return null;
+    }
+
+    $host = trim((string) (getenv('REDIS_HOST') ?: '127.0.0.1'));
+    $port = (int) (getenv('REDIS_PORT') ?: 6379);
+    $timeout = (float) (getenv('REDIS_TIMEOUT') ?: 0.05);
+    $password = getenv('REDIS_PASSWORD');
+    $database = getenv('REDIS_DB');
+
+    $redis = new Redis();
+
+    try {
+        if (!$redis->connect($host, $port, $timeout)) {
+            return null;
+        }
+
+        if (is_string($password) && $password !== '' && !$redis->auth($password)) {
+            return null;
+        }
+
+        if ($database !== false && $database !== '' && !$redis->select((int) $database)) {
+            return null;
+        }
+
+        $redis->ping();
+        $client = $redis;
+        return $client;
+    } catch (Throwable $exception) {
+        return null;
+    }
+}
+
+function rate_limit_key(string $scope, string $ip): string
+{
+    return RATE_LIMIT_REDIS_PREFIX . $scope . ':' . hash('sha256', $ip);
+}
+
+function consume_rate_limit_via_redis(string $scope, string $ip, int $maxAttempts, int $windowSeconds, string $message): void
+{
+    $redis = redis_rate_limit_client();
+    if ($redis === null) {
+        consume_rate_limit_via_file($scope, $ip, $maxAttempts, $windowSeconds, $message);
+        return;
+    }
+
+    $key = rate_limit_key($scope, $ip);
+    $count = (int) $redis->incr($key);
+    if ($count === 1) {
+        $redis->expire($key, $windowSeconds);
+    }
+
+    $ttl = (int) $redis->ttl($key);
+    if ($ttl < 0) {
+        $redis->expire($key, $windowSeconds);
+        $ttl = $windowSeconds;
+    }
+
+    if ($count > $maxAttempts) {
+        header('Retry-After: ' . max(1, $ttl));
+        respond(false, $message, null, 429, [
+            'retryAfter' => max(1, $ttl),
+            'storage' => 'redis',
+        ]);
+    }
+}
+
+function consume_rate_limit_via_file(string $scope, string $ip, int $maxAttempts, int $windowSeconds, string $message): void
+{
     $file = rate_limit_storage_file($scope, $ip);
     $now = time();
     $retryAfter = 0;
@@ -633,13 +867,26 @@ function consume_rate_limit(string $scope, int $maxAttempts, int $windowSeconds,
         header('Retry-After: ' . $retryAfter);
         respond(false, $message, null, 429, [
             'retryAfter' => $retryAfter,
+            'storage' => 'file',
         ]);
     }
+}
+
+function consume_rate_limit(string $scope, int $maxAttempts, int $windowSeconds, string $message): void
+{
+    $ip = get_client_ip();
+    consume_rate_limit_via_redis($scope, $ip, $maxAttempts, $windowSeconds, $message);
 }
 
 function clear_rate_limit(string $scope): void
 {
     $ip = get_client_ip();
+    $redis = redis_rate_limit_client();
+    if ($redis !== null) {
+        $redis->del(rate_limit_key($scope, $ip));
+        return;
+    }
+
     $file = rate_limit_storage_file($scope, $ip);
 
     mutate_json_file($file, [
@@ -660,6 +907,10 @@ function ensure_storage_initialized(): void
 {
     if (!is_dir(DATA_PATH) && !mkdir(DATA_PATH, 0777, true) && !is_dir(DATA_PATH)) {
         respond(false, '无法初始化数据目录。', null, 500);
+    }
+
+    if (!is_dir(LOG_PATH) && !mkdir(LOG_PATH, 0777, true) && !is_dir(LOG_PATH)) {
+        respond(false, '无法初始化日志目录。', null, 500);
     }
 
     if (!is_dir(RATE_LIMIT_PATH) && !mkdir(RATE_LIMIT_PATH, 0777, true) && !is_dir(RATE_LIMIT_PATH)) {

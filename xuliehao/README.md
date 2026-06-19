@@ -39,7 +39,10 @@
 - Nginx：请把 [nginx-data-protect.conf](file:///e:/代码/xuliehao/deploy/nginx-data-protect.conf) 中的配置合并到站点配置或宝塔伪静态中，它同时保护 `data/` 目录和上传目录里的脚本访问
 - 推荐做法：如果可以调整目录结构，优先把 `data/` 移到网站根目录之外
 - 后台会话已启用 30 分钟闲置超时，长时间不操作会要求重新登录
-- 限流默认基于 `REMOTE_ADDR`，不会再信任客户端伪造的 `X-Forwarded-For`
+- 限流默认基于 `REMOTE_ADDR`；只有在配置 `SERIAL_QUERY_TRUSTED_PROXIES` 或 `TRUSTED_PROXY_IPS` 后，才会信任代理转发的真实访客 IP
+- 如果服务器安装并可连接 Redis，限流会优先使用 Redis；未检测到 Redis 时自动回退到文件限流
+- Redis 可通过环境变量配置：`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`、`REDIS_TIMEOUT`
+- 审计日志改为按月追加存储在 `data/logs/` 下，不再因固定条数上限覆盖旧日志
 - 限流目录会做概率式垃圾回收，自动清理长时间未使用的限流文件，降低 Inode 堆积风险
 - API 响应已默认附带 `nosniff`、`DENY` 和 `CSP` 安全头；如果你希望 `index.html`、`admin.html` 这类静态页面也受到同级保护，请在 Web 服务器配置中同步添加这些响应头
 

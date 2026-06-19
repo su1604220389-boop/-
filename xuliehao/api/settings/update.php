@@ -14,6 +14,10 @@ if (array_key_exists('announcement', $input)) {
     ensure_max_length(trim((string) $input['announcement']), MAX_ANNOUNCEMENT_LENGTH, '公告内容过长。');
 }
 
+if (array_key_exists('backgroundImage', $input)) {
+    ensure_max_length(trim((string) $input['backgroundImage']), MAX_BACKGROUND_IMAGE_LENGTH, '背景图路径过长。');
+}
+
 $settings = update_settings_store(function (array $settings) use ($input, $admin): array {
     if (array_key_exists('announcement', $input)) {
         $settings['announcement'] = trim((string) $input['announcement']);
